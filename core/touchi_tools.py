@@ -1355,7 +1355,7 @@ class TouchiTools:
         """自动偷吃循环任务"""
         try:
             start_time = time.time()
-            max_duration = 4 * 3600  # 4小时 = 14400秒
+            max_duration = 4 * 3600  # 4小时 = 14400秒 - 🔧 修复：应该是3600而不是3600
             base_interval = 600  # 基础间隔10分钟 = 600秒
             interval = base_interval / self.multiplier  # 应用冷却倍率
             
