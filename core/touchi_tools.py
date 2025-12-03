@@ -32,6 +32,9 @@ class TouchiTools:
         
         self.multiplier = 1.0
         
+        # 异步初始化倍率
+        asyncio.create_task(self._load_multiplier())
+        
         # 初始化概率事件系统
         from .touchi_events import TouchiEvents
         self.events = TouchiEvents(self.db_path, self.biaoqing_dir)
@@ -56,11 +59,48 @@ class TouchiTools:
         self.jianshi_dir = os.path.join(current_dir, "jianshi")
         os.makedirs(self.jianshi_dir, exist_ok=True)
     
-    def set_multiplier(self, multiplier: float):
+    async def _load_multiplier(self):
+        """从数据库加载冷却倍率"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT config_value FROM system_config WHERE config_key = 'touchi_cooldown_multiplier'"
+                )
+                result = await cursor.fetchone()
+                if result:
+                    self.multiplier = float(result[0])
+                    logger.info(f"从数据库加载冷却倍率: {self.multiplier}")
+                else:
+                    # 如果没有配置，插入默认值
+                    await db.execute(
+                        "INSERT OR IGNORE INTO system_config (config_key, config_value) VALUES ('touchi_cooldown_multiplier', '1.0')"
+                    )
+                    await db.commit()
+                    logger.info("冷却倍率配置不存在，使用默认值 1.0")
+        except Exception as e:
+            logger.error(f"加载冷却倍率时出错: {e}")
+            self.multiplier = 1.0  # 出错时使用默认值
+
+    async def set_multiplier(self, multiplier: float):
         if multiplier < 0.01 or multiplier > 100:
             return "倍率必须在0.01到100之间"
-        self.multiplier = multiplier
-        return f"鼠鼠冷却倍率已设置为 {multiplier} 倍！"
+        
+        try:
+            # 保存到数据库
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "INSERT OR REPLACE INTO system_config (config_key, config_value) VALUES ('touchi_cooldown_multiplier', ?)",
+                    (str(multiplier),)
+                )
+                await db.commit()
+            
+            # 更新内存中的值
+            self.multiplier = multiplier
+            logger.info(f"冷却倍率已更新并保存到数据库: {multiplier}")
+            return f"鼠鼠冷却倍率已设置为 {multiplier} 倍！\n💾 设置已持久化保存"
+        except Exception as e:
+            logger.error(f"保存冷却倍率时出错: {e}")
+            return f"保存冷却倍率失败: {str(e)}"
     
     async def clear_user_data(self, user_id=None):
         """清除用户数据（管理员功能）"""
