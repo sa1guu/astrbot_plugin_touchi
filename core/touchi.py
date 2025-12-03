@@ -873,7 +873,7 @@ def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
     has_gold_items = any(placed["item"]["level"] == "gold" for placed in placed_items)
 
     # 静态图终点：最后一帧（留 5 帧缓冲可自己调）
-    static_frame_index = max(0, total_frames - 1 - 5) if total_frames > 5 else total_frames - 1
+    static_frame_index = max(0, total_frames - 1 - 5) if total_frames > 5 else max(0, total_frames - 1)
 
     # 表情选择逻辑
     expression_map = {"gold": "happy", "red": "eat"}
