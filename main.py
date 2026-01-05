@@ -11,13 +11,13 @@ from .core.tujian import TujianTools
 from .core.zhou import ZhouGame
 
 
-@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.7.9")
+@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.8.1")
 class Main(Star):
     @classmethod
     def info(cls):
         return {
             "name": "astrbot_plugin_touchi",
-            "version": "2.7.9",
+            "version": "2.8.1",
             "description": "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘等多种功能",
             "author": "sa1guu"
         }
@@ -43,6 +43,36 @@ class Main(Star):
         # 读取静态图片配置
         self.enable_static_image = self.config.get("enable_static_image", False)
         
+        # 读取实验性概率调节配置（从 AstrBot 配置系统）
+        self.experimental_custom_drop_rates = self.config.get("enable_custom_drop_rates", False)
+        self.normal_mode_drop_rates = self.config.get("normal_mode_drop_rates", {
+            "blue": 0.25,
+            "purple": 0.42,
+            "gold": 0.28,
+            "red": 0.05
+        })
+        self.menggong_mode_drop_rates = self.config.get("menggong_mode_drop_rates", {
+            "purple": 0.45,
+            "gold": 0.45,
+            "red": 0.10
+        })
+        
+        # 验证概率配置的有效性
+        if self.experimental_custom_drop_rates:
+            # 验证正常模式概率
+            normal_sum = sum(self.normal_mode_drop_rates.values())
+            if abs(normal_sum - 1.0) > 0.01:
+                logger.warning(f"⚠️ 正常模式概率配置总和不为1.0（当前: {normal_sum:.2f}），已禁用自定义概率功能")
+                self.experimental_custom_drop_rates = False
+            
+            # 验证猛攻模式概率
+            menggong_sum = sum(self.menggong_mode_drop_rates.values())
+            if abs(menggong_sum - 1.0) > 0.01:
+                logger.warning(f"⚠️ 猛攻模式概率配置总和不为1.0（当前: {menggong_sum:.2f}），已禁用自定义概率功能")
+                self.experimental_custom_drop_rates = False
+            else:
+                logger.info("✅ 自定义概率配置已启用")
+        
         # Define path for the plugin's private database in its data directory
         # 使用相对路径，避免硬编码绝对路径
         # 获取AstrBot根目录，然后构建数据目录路径
@@ -61,7 +91,10 @@ class Main(Star):
             enable_beauty_pic=self.enable_beauty_pic,
             cd=5,
             db_path=self.db_path,
-            enable_static_image=self.enable_static_image
+            enable_static_image=self.enable_static_image,
+            experimental_custom_drop_rates=self.experimental_custom_drop_rates,
+            normal_mode_drop_rates=self.normal_mode_drop_rates,
+            menggong_mode_drop_rates=self.menggong_mode_drop_rates
         )
 
         self.tujian_tools = TujianTools(db_path=self.db_path)
