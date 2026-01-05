@@ -298,7 +298,8 @@ def place_items(items, grid_width, grid_height, total_grid_size=2):
     
     return placed
 
-def create_safe_layout(items, menggong_mode=False, grid_size=2, auto_mode=False, time_multiplier=1.0):
+def create_safe_layout(items, menggong_mode=False, grid_size=2, auto_mode=False, time_multiplier=1.0, 
+                     custom_normal_rates=None, custom_menggong_rates=None):
     selected_items = []
     
     # 根据模式调整概率
@@ -309,9 +310,19 @@ def create_safe_layout(items, menggong_mode=False, grid_size=2, auto_mode=False,
         else:
             level_chances = {"purple": 0.52, "blue": 0.35, "gold": 0.093, "red": 0.017}
     elif menggong_mode:
-        level_chances = {"purple": 0.45, "blue": 0.0, "gold": 0.45, "red": 0.10}
+        # 猛攻模式：优先使用自定义概率，否则使用默认概率
+        if custom_menggong_rates:
+            level_chances = custom_menggong_rates.copy()
+            # 猛攻模式应该没有蓝色物品
+            level_chances["blue"] = 0.0
+        else:
+            level_chances = {"purple": 0.45, "blue": 0.0, "gold": 0.45, "red": 0.10}
     else:
-        level_chances = {"purple": 0.42, "blue": 0.25, "gold": 0.28, "red": 0.05}
+        # 正常模式：优先使用自定义概率，否则使用默认概率
+        if custom_normal_rates:
+            level_chances = custom_normal_rates.copy()
+        else:
+            level_chances = {"purple": 0.42, "blue": 0.25, "gold": 0.28, "red": 0.05}
     
     # 根据时间倍率调整爆率
     # time_multiplier范围0.6-1.4，1.0为基准
@@ -837,7 +848,8 @@ def cleanup_old_gifs(keep_recent=2):
         print(f"Error cleaning up old GIFs: {e}")
 
 def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
-                        gif_scale=0.7, optimize_size=False, enable_static_image=False):
+                        gif_scale=0.7, optimize_size=False, enable_static_image=False,
+                        custom_normal_rates=None, custom_menggong_rates=None):
     """
     Generate a safe GIF animation and return the image path and list of placed items.
 
@@ -848,6 +860,8 @@ def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
         gif_scale (float): Scale factor for the final GIF size (1.0 = original size, 0.5 = half size, 2.0 = double size)
         optimize_size (bool): Whether to optimize GIF file size (reduces colors and enables compression, may affect quality)
         enable_static_image (bool): Whether to generate static image (only last frame) instead of GIF animation
+        custom_normal_rates (dict): Custom drop rates for normal mode (optional)
+        custom_menggong_rates (dict): Custom drop rates for menggong mode (optional)
 
     Returns:
         tuple: (output_path, placed_items)
@@ -860,7 +874,8 @@ def generate_safe_image(menggong_mode=False, grid_size=2, time_multiplier=1.0,
         return None, []
 
     placed_items, start_x, start_y, region_width, region_height = create_safe_layout(
-        items, menggong_mode, grid_size, auto_mode=False, time_multiplier=time_multiplier
+        items, menggong_mode, grid_size, auto_mode=False, time_multiplier=time_multiplier,
+        custom_normal_rates=custom_normal_rates, custom_menggong_rates=custom_menggong_rates
     )
 
     # ============ ① 一体化写法：直接拿帧序列 + 总帧数 ============
