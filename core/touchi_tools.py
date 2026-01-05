@@ -12,12 +12,16 @@ from astrbot.api import logger
 from .touchi import generate_safe_image, get_item_value
 
 class TouchiTools:
-    def __init__(self, enable_touchi=True, enable_beauty_pic=True, cd=5, db_path=None, enable_static_image=False):
+    def __init__(self, enable_touchi=True, enable_beauty_pic=True, cd=5, db_path=None, enable_static_image=False, 
+                 experimental_custom_drop_rates=False, normal_mode_drop_rates=None, menggong_mode_drop_rates=None):
         self.enable_touchi = enable_touchi
         self.enable_beauty_pic = enable_beauty_pic
         self.cd = cd
         self.db_path = db_path # Path to the database file
         self.enable_static_image = enable_static_image
+        self.experimental_custom_drop_rates = experimental_custom_drop_rates
+        self.normal_mode_drop_rates = normal_mode_drop_rates or {"blue": 0.25, "purple": 0.42, "gold": 0.28, "red": 0.05}
+        self.menggong_mode_drop_rates = menggong_mode_drop_rates or {"purple": 0.45, "gold": 0.45, "red": 0.10}
         self.last_usage = {}
         self.waiting_users = {}  # 记录正在等待的用户及其结束时间
         self.semaphore = asyncio.Semaphore(10)
@@ -475,8 +479,13 @@ class TouchiTools:
             # 检查是否需要使用特殊模式（系统补偿局事件使用六套模式概率）
             use_menggong_probability = menggong_mode
             
+            # 传递自定义概率参数
+            custom_normal = self.normal_mode_drop_rates if self.experimental_custom_drop_rates else None
+            custom_menggong = self.menggong_mode_drop_rates if self.experimental_custom_drop_rates else None
+            
             safe_image_path, placed_items = await loop.run_in_executor(
-                None, generate_safe_image, use_menggong_probability, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image
+                None, generate_safe_image, use_menggong_probability, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image,
+                custom_normal, custom_menggong
             )
             
             if safe_image_path and os.path.exists(safe_image_path):
@@ -506,8 +515,10 @@ class TouchiTools:
                 # 如果触发系统补偿局事件，需要重新生成图片使用六套模式概率
                 if event_triggered and event_type == "system_compensation":
                     # 重新生成图片，使用六套模式概率
+                    custom_menggong = self.menggong_mode_drop_rates if self.experimental_custom_drop_rates else None
                     safe_image_path, placed_items = await loop.run_in_executor(
-                        None, generate_safe_image, True, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image
+                        None, generate_safe_image, True, used_grid_size, time_multiplier, 0.7, False, self.enable_static_image,
+                        None, custom_menggong
                     )
                     
                     # 重新计算总价值
@@ -1437,7 +1448,9 @@ class TouchiTools:
             menggong_mode = economy_data["menggong_active"] and current_time < economy_data["menggong_end_time"]
             
             # 创建保险箱布局（自动模式下概率调整）
-            placed_items, _, _, _, _ = create_safe_layout(items, menggong_mode, economy_data["grid_size"], auto_mode=True, time_multiplier=1.0)
+            # 自动偷吃不使用自定义概率，使用默认概率
+            placed_items, _, _, _, _ = create_safe_layout(items, menggong_mode, economy_data["grid_size"], auto_mode=True, time_multiplier=1.0, 
+                                                            custom_normal_rates=None, custom_menggong_rates=None)
             
             if placed_items:
                 # 记录到数据库
