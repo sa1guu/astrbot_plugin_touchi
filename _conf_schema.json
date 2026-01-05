@@ -38,5 +38,78 @@
         "type": "bool",
         "default": false,
         "description": "是否启用静态图片模式，开启后只显示GIF的最后一帧而不是动画"
+    },
+    "enable_custom_drop_rates": {
+        "type": "bool",
+        "default": false,
+        "description": "⚠️ 实验性功能：启用自定义出货概率调节。⚠️ 警告：启用此功能可能会导致插件运行不稳定，请谨慎使用！",
+        "hint": "启用后将使用下方的自定义概率配置，否则使用默认概率"
+    },
+    "normal_mode_drop_rates": {
+        "type": "object",
+        "default": {
+            "blue": 0.25,
+            "purple": 0.42,
+            "gold": 0.28,
+            "red": 0.05
+        },
+        "description": "正常模式出货概率配置",
+        "hint": "四项概率之和必须等于 1.0（100%），建议保持默认值",
+        "items": {
+            "blue": {
+                "type": "float",
+                "default": 0.25,
+                "description": "蓝色物品概率",
+                "hint": "正常模式中蓝色物品的出货概率，建议范围：0.1-0.5"
+            },
+            "purple": {
+                "type": "float",
+                "default": 0.42,
+                "description": "紫色物品概率",
+                "hint": "正常模式中紫色物品的出货概率，建议范围：0.3-0.5"
+            },
+            "gold": {
+                "type": "float",
+                "default": 0.28,
+                "description": "金色物品概率",
+                "hint": "正常模式中金色物品的出货概率，建议范围：0.2-0.4"
+            },
+            "red": {
+                "type": "float",
+                "default": 0.05,
+                "description": "红色物品概率",
+                "hint": "正常模式中红色物品的出货概率，建议范围：0.01-0.1"
+            }
+        }
+    },
+    "menggong_mode_drop_rates": {
+        "type": "object",
+        "default": {
+            "purple": 0.45,
+            "gold": 0.45,
+            "red": 0.10
+        },
+        "description": "猛攻模式出货概率配置",
+        "hint": "三项概率之和必须等于 1.0（100%），猛攻模式不出现蓝色物品",
+        "items": {
+            "purple": {
+                "type": "float",
+                "default": 0.45,
+                "description": "紫色物品概率",
+                "hint": "猛攻模式中紫色物品的出货概率，建议范围：0.3-0.6"
+            },
+            "gold": {
+                "type": "float",
+                "default": 0.45,
+                "description": "金色物品概率",
+                "hint": "猛攻模式中金色物品的出货概率，建议范围：0.3-0.6"
+            },
+            "red": {
+                "type": "float",
+                "default": 0.10,
+                "description": "红色物品概率",
+                "hint": "猛攻模式中红色物品的出货概率，建议范围：0.05-0.2"
+            }
+        }
     }
 }
