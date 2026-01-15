@@ -1,23 +1,26 @@
 import os
 import asyncio
+import time
 import aiosqlite  
 from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.event.filter import command
+from .core.chixiao import ChixiaoSystem
 from .core.touchi_tools import TouchiTools
 from .core.tujian import TujianTools
 from .core.zhou import ZhouGame
 
 
-@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.8.1")
+
+@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.8.2")
 class Main(Star):
     @classmethod
     def info(cls):
         return {
             "name": "astrbot_plugin_touchi",
-            "version": "2.8.1",
+            "version": "2.8.2",
             "description": "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘等多种功能",
             "author": "sa1guu"
         }
@@ -85,6 +88,14 @@ class Main(Star):
         # Initialize the database table
         asyncio.create_task(self._initialize_database())
         
+        # # 初始化转盘工具 - 改为独立调用
+        # self.roulette_tools = RouletteTools(output_dir)
+        
+        # 初始化赤枢系统（必须在TouchiTools之前初始化）
+        biaoqing_dir = os.path.join(os.path.dirname(__file__), "core", "biaoqing")
+        self.chixiao_system = ChixiaoSystem(self.db_path, biaoqing_dir)
+        asyncio.create_task(self.chixiao_system.initialize_database())
+        
         # Pass the database file PATH to the tools
         self.touchi_tools = TouchiTools(
             enable_touchi=self.enable_touchi,
@@ -94,7 +105,8 @@ class Main(Star):
             enable_static_image=self.enable_static_image,
             experimental_custom_drop_rates=self.experimental_custom_drop_rates,
             normal_mode_drop_rates=self.normal_mode_drop_rates,
-            menggong_mode_drop_rates=self.menggong_mode_drop_rates
+            menggong_mode_drop_rates=self.menggong_mode_drop_rates,
+            chixiao_system=self.chixiao_system  # 传递赤枢系统
         )
 
         self.tujian_tools = TujianTools(db_path=self.db_path)
@@ -103,9 +115,6 @@ class Main(Star):
         items_dir = os.path.join(os.path.dirname(__file__), "core", "items")
         output_dir = os.path.join(os.path.dirname(__file__), "core", "output")
         self.zhou_game = ZhouGame(self.db_path, items_dir, output_dir)
-        
-        # # 初始化转盘工具 - 改为独立调用
-        # self.roulette_tools = RouletteTools(output_dir)
 
     async def _initialize_database(self):
         """Initializes the database and creates the table if it doesn't exist."""
@@ -274,12 +283,106 @@ class Main(Star):
         async for result in self.touchi_tools.get_touchi(event):
             yield result
         
-        # 检查是否触发了洲了个洲游戏
+        # 检查是否触发了洲了个洲游戏或赤枭对抗
         if hasattr(self.touchi_tools, '_delayed_result') and self.touchi_tools._delayed_result:
             delayed_result = self.touchi_tools._delayed_result
+            
+            # 检查是否触发赤枭对抗
+            user_id = event.get_sender_id()
+            group_id = event.get_group_id()
+            
+            # 检查赤枭对抗（需要偷吃成功且没有事件触发）
+            if (delayed_result.get('success', False) and 
+                not delayed_result.get('has_event', False) and
+                'message' in delayed_result):
+                
+                try:
+                    # 从消息中提取总价值
+                    message = delayed_result.get('message', '')
+                    # 查找 "总价值: X" 来提取价值
+                    import re
+                    value_match = re.search(r'总价值:\s*([0-9,]+)', message)
+                    if value_match:
+                        total_value = int(value_match.group(1).replace(',', ''))
+                        
+                        # 检查猛攻状态（用于赤枭对抗概率计算）
+                        economy_data = await self.touchi_tools.get_user_economy_data(user_id)
+                        current_time = int(time.time())
+                        is_menggong_active = (economy_data and 
+                                            economy_data.get('menggong_active') and 
+                                            economy_data.get('menggong_end_time') and 
+                                            current_time < economy_data['menggong_end_time'])
+                        
+                        # 检查赤枭对抗（传递猛攻状态）
+                        triggered, result_type, chixiao_id, amount, emoji_path = await self.touchi_tools.check_chixiao_battle(
+                            user_id, total_value, is_menggong_active
+                        )
+                        
+                        if triggered:
+                            # 获取群成员昵称
+                            nickname_map = {}
+                            if group_id:
+                                nickname_map = await self.touchi_tools._get_group_member_nicknames(event, group_id)
+                            
+                            # 获取赤枭昵称
+                            chixiao_nickname = nickname_map.get(chixiao_id, f"用户{chixiao_id[:6]}")
+                            
+                            # 获取用户昵称
+                            user_nickname = nickname_map.get(user_id, f"用户{user_id[:6]}")
+                            
+                            # 构建对抗消息
+                            if result_type == "chixiao_won":
+                                battle_message = (
+                                    f"⚔️ 赤枭对抗触发！\n\n"
+                                    f"👤 偷吃者: {user_nickname}\n"
+                                    f"🔴 赤枭: {chixiao_nickname}\n\n"
+                                    f"💀 结果: 你被赤枭打死了！\n"
+                                    f"💸 被夺走价值: {amount:,}\n"
+                                    f"📢 @{chixiao_id}"
+                                )
+                            else:  # victim_won
+                                battle_message = (
+                                    f"⚔️ 赤枭对抗触发！\n\n"
+                                    f"👤 偷吃者: {user_nickname}\n"
+                                    f"🔴 赤枭: {chixiao_nickname}\n\n"
+                                    f"🎉 结果: 你将赤枭打死了！\n"
+                                    f"💰 获得赤枭所有价值: {amount:,}\n"
+                                    f"📢 @{chixiao_id}"
+                                )
+                            
+                            # 构建战斗结果链
+                            battle_chain = [
+                                Plain(battle_message)
+                            ]
+                            
+                            # 添加表情图片
+                            if emoji_path and os.path.exists(emoji_path):
+                                battle_chain.append(Image.fromFileSystem(emoji_path))
+                            
+                            # 先发送偷吃结果
+                            chain = [
+                                At(qq=event.get_sender_id()),
+                                Plain(f"\n{delayed_result['message']}")
+                            ]
+                            if delayed_result.get('image_path'):
+                                chain.append(Image.fromFileSystem(delayed_result['image_path']))
+                            yield event.chain_result(chain)
+                            
+                            # 再发送战斗结果
+                            yield event.chain_result(battle_chain)
+                            
+                            # 清理延迟结果
+                            self.touchi_tools._delayed_result = None
+                            return  # 提前返回，不执行后续代码
+                            
+                except Exception as e:
+                    logger.error(f"处理赤枭对抗时出错: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # 检查是否触发了洲了个洲游戏
             if delayed_result.get('zhou_triggered', False):
                 try:
-                    user_id = event.get_sender_id()
                     # 启动偷吃触发的洲了个洲游戏
                     success, image_path, message = await self.zhou_game.start_new_game(user_id, is_triggered=True)
                     
@@ -1038,6 +1141,123 @@ class Main(Star):
         except Exception as e:
             logger.error(f"获取游戏统计时出错: {e}")
             yield event.plain_result("❌ 获取统计信息失败，请稍后重试")
+    
+    @command("赤枭巡猎")
+    async def become_chixiao(self, event: AstrMessageEvent):
+        """赤枭巡猎 - 成为赤枭"""
+        allowed, error_msg = self._check_all_permissions(event)
+        if not allowed:
+            if error_msg:
+                yield event.plain_result(error_msg)
+            return
+        
+        try:
+            user_id = event.get_sender_id()
+            
+            # 解析参数
+            plain_text = event.message_str.strip()
+            args = plain_text.split()
+            
+            # 检查是否指定了装备价值
+            if len(args) >= 2:
+                # 用户指定了装备价值
+                try:
+                    equipment_value = int(args[1].replace(',', ''))
+                    if equipment_value < 200000:
+                        yield event.plain_result("❌ 成为赤枭至少需要200,000装备价值")
+                        return
+                except ValueError:
+                    yield event.plain_result("❌ 装备价值必须是数字")
+                    return
+            else:
+                # 不带参数，默认使用200,000
+                equipment_value = 200000
+            
+            # 检查是否已经是赤枭
+            chixiao_info = await self.chixiao_system.get_chixiao_info(user_id)
+            if chixiao_info:
+                # 已经是赤枭，更新装备价值
+                success, message = await self.chixiao_system.become_chixiao(user_id, equipment_value)
+                yield event.plain_result(message)
+            else:
+                # 成为赤枭
+                if equipment_value < 200000:
+                    yield event.plain_result("❌ 成为赤枭至少需要200,000装备价值")
+                    return
+                
+                success, message = await self.chixiao_system.become_chixiao(user_id, equipment_value)
+                yield event.plain_result(message)
+                
+        except Exception as e:
+            logger.error(f"赤枭巡猎时出错: {e}")
+            yield event.plain_result("❌ 赤枭巡猎失败，请稍后重试")
+    
+    @command("取消赤枭")
+    async def cancel_chixiao(self, event: AstrMessageEvent):
+        """取消赤枭状态"""
+        allowed, error_msg = self._check_all_permissions(event)
+        if not allowed:
+            if error_msg:
+                yield event.plain_result(error_msg)
+            return
+        
+        try:
+            user_id = event.get_sender_id()
+            success, message = await self.chixiao_system.cancel_chixiao(user_id)
+            yield event.plain_result(message)
+            
+        except Exception as e:
+            logger.error(f"取消赤枭状态时出错: {e}")
+            yield event.plain_result("❌ 取消赤枭状态失败，请稍后重试")
+    
+    @command("赤枭榜")
+    async def chixiao_leaderboard(self, event: AstrMessageEvent):
+        """赤枭排行榜"""
+        allowed, error_msg = self._check_all_permissions(event)
+        if not allowed:
+            if error_msg:
+                yield event.plain_result(error_msg)
+            return
+        
+        try:
+            group_id = event.get_group_id()
+            
+            # 获取群成员昵称映射
+            nickname_map = {}
+            if group_id:
+                nickname_map = await self.touchi_tools._get_group_member_nicknames(event, group_id)
+            
+            # 获取赤枭排行榜
+            leaderboard = await self.chixiao_system.get_leaderboard()
+            
+            if not leaderboard:
+                yield event.plain_result("📊 暂无赤枭玩家\n\n💡 成为赤枭需要装备价值至少200,000\n使用\"赤枭巡猎\"指令成为赤枭")
+                return
+            
+            # 构建排行榜消息
+            message = "🏆 赤枭排行榜 🏆\n\n"
+            
+            for i, chixiao in enumerate(leaderboard, 1):
+                user_id = chixiao["user_id"]
+                kills = chixiao["total_kills"]
+                value = chixiao["equipment_value"]
+                
+                # 获取昵称
+                nickname = nickname_map.get(user_id, f"用户{user_id[:6]}")
+                
+                # 计算击杀概率
+                kill_chance = await self.chixiao_system.calculate_kill_chance(value)
+                kill_chance_percent = kill_chance * 100
+                
+                message += f"{i}. {nickname} - {kills}次击杀 | 价值: {value:,} | 击杀率: {kill_chance_percent:.0f}%\n"
+            
+            message += "\n💡 成为赤枭需要装备价值至少200,000\n使用\"赤枭巡猎\"指令成为赤枭"
+            
+            yield event.plain_result(message)
+            
+        except Exception as e:
+            logger.error(f"获取赤枭排行榜时出错: {e}")
+            yield event.plain_result("❌ 获取赤枭排行榜失败，请稍后重试")
     
     @command("鼠鼠转盘")
     async def roulette_spin(self, event: AstrMessageEvent):
