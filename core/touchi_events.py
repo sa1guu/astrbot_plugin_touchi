@@ -8,9 +8,10 @@ import os
 class TouchiEvents:
     """偷吃概率事件处理类"""
     
-    def __init__(self, db_path, biaoqing_dir):
+    def __init__(self, db_path, biaoqing_dir, chixiao_system=None):
         self.db_path = db_path
         self.biaoqing_dir = biaoqing_dir
+        self.chixiao_system = chixiao_system  # 赤枢系统
         
         # 事件概率配置
         self.event_probabilities = {
@@ -20,7 +21,8 @@ class TouchiEvents:
             "noob_teammate": 0.04,      #  概率遇到唐氏队友
             "hunted_escape": 0.04,      #  概率被追杀丢包撤离
             "passerby_mouse": 0.04,     #  概率遇到路人鼠鼠
-            "system_compensation": 0.04  #  概率触发系统补偿局
+            "system_compensation": 0.04,  #  概率触发系统补偿局
+            "chixiao_battle": 0.20       #  概率触发赤枢对抗（优先级最高）
         }
         
         # 事件表情映射配置
@@ -69,7 +71,7 @@ class TouchiEvents:
             traceback.print_exc()
             return None
     
-    async def check_random_events(self, event, user_id, placed_items, total_value):
+    async def check_random_events(self, event, user_id, placed_items, total_value, is_menggong_active=False):
         """检查是否触发随机事件
         
         Args:
@@ -77,12 +79,27 @@ class TouchiEvents:
             user_id: 用户ID
             placed_items: 偷吃获得的物品列表
             total_value: 物品总价值
+            is_menggong_active: 是否在猛攻状态
             
         Returns:
             tuple: (是否触发事件, 事件类型, 修改后的物品列表, 修改后的总价值, 事件消息, 冷却时间倍率, 金色物品路径, 表情路径)
         """
         
-        # 随机检查事件
+        # 优先检查赤枢对抗（仅在价值>=50000时）
+        if self.chixiao_system and total_value >= 50000:
+            rand = random.random()
+            print(f"[TouchiEvents] 赤枢对抗检查: user_id={user_id}, total_value={total_value:,}, rand={rand:.4f}, prob={self.event_probabilities['chixiao_battle']:.2f}, is_menggong_active={is_menggong_active}")
+            if rand < self.event_probabilities["chixiao_battle"]:
+                print(f"[TouchiEvents] ✅ 概率检查通过，调用chixiao_system")
+                # 触发赤枢对抗
+                result = await self._handle_chixiao_battle_event(event, user_id, total_value, is_menggong_active)
+                print(f"[TouchiEvents] chixiao_system返回结果: triggered={result[0]}, result_type={result[1]}")
+                if result[0]:  # 如果成功触发
+                    return result[0], result[1], result[2], result[3], result[4], None, None, result[5]
+            else:
+                print(f"[TouchiEvents] ❌ 概率检查未通过")
+        
+        # 随机检查其他事件
         rand = random.random()
         cumulative_prob = 0
         
@@ -428,3 +445,59 @@ class TouchiEvents:
         except Exception as e:
             print(f"获取六套时间倍率时出错: {e}")
             return 1.0  # 默认倍率
+
+    async def _handle_chixiao_battle_event(self, event, user_id, total_value, is_menggong_active):
+        """处理赤枭对抗事件"""
+        if not self.chixiao_system:
+            print(f"[TouchiEvents] ❌ chixiao_system 为 None")
+            return False, None, None, 0, None, None
+        
+        try:
+            # 检查是否存在赤枢玩家
+            chixiao_players = await self.chixiao_system.get_all_chixiao_players()
+            if not chixiao_players:
+                print(f"[TouchiEvents] ❌ 没有赤枢玩家，跳过赤枭对抗")
+                return False, None, None, 0, None, None
+            
+            print(f"[TouchiEvents] 调用 check_and_trigger_battle: user_id={user_id}, total_value={total_value:,}, is_menggong_active={is_menggong_active}, 赤枢数量={len(chixiao_players)}")
+            # 调用赤枢系统的检查方法
+            triggered, result_type, chixiao_id, amount, kills = await self.chixiao_system.check_and_trigger_battle(
+                user_id, total_value, is_menggong_active
+            )
+            print(f"[TouchiEvents] check_and_trigger_battle 返回: triggered={triggered}, result_type={result_type}, chixiao_id={chixiao_id}, amount={amount}, kills={kills}")
+            
+            if not triggered:
+                print(f"[TouchiEvents] ❌ 赤枢系统返回未触发（可能没有满足条件的赤枢）")
+                return False, None, None, 0, None, None
+            
+            # 获取赤枭对抗的表情路径
+            emoji_path = self.chixiao_system.get_emoji_path(result_type)
+            
+            # 根据结果构建消息
+            if result_type == "chixiao_won":
+                event_message = (
+                    f"⚔️ 赤枭对抗触发！\n"
+                    f"🎯 赤枭发动袭击！\n"
+                    f"💸 你的{amount:,}哈夫币被赤枭抢走了！\n"
+                    f"💔 赤枭击杀数: {kills}"
+                )
+                # 赤枭获胜：偷吃价值归零
+                final_value = 0
+            elif result_type == "victim_won":
+                event_message = (
+                    f"⚔️ 赤枭对抗触发！\n"
+                    f"🎉 你击败了赤枭！\n"
+                    f"💰 获得赤枭的{amount:,}哈夫币！\n"
+                    f"🏆 赤枭已被击杀！"
+                )
+                # 玩家获胜：获得赤枭所有价值
+                final_value = amount
+            else:
+                return False, None, None, 0, None, None
+            
+            # 返回结果（注意：赤枭对抗不返回物品列表，因为价值已经改变）
+            return True, "chixiao_battle", None, final_value, event_message, emoji_path
+            
+        except Exception as e:
+            print(f"处理赤枭对抗事件时出错: {e}")
+            return False, None, None, 0, None, None
