@@ -13,7 +13,8 @@ from .touchi import generate_safe_image, get_item_value
 
 class TouchiTools:
     def __init__(self, enable_touchi=True, enable_beauty_pic=True, cd=5, db_path=None, enable_static_image=False, 
-                 experimental_custom_drop_rates=False, normal_mode_drop_rates=None, menggong_mode_drop_rates=None):
+                 experimental_custom_drop_rates=False, normal_mode_drop_rates=None, menggong_mode_drop_rates=None,
+                 chixiao_system=None):
         self.enable_touchi = enable_touchi
         self.enable_beauty_pic = enable_beauty_pic
         self.cd = cd
@@ -22,6 +23,7 @@ class TouchiTools:
         self.experimental_custom_drop_rates = experimental_custom_drop_rates
         self.normal_mode_drop_rates = normal_mode_drop_rates or {"blue": 0.25, "purple": 0.42, "gold": 0.28, "red": 0.05}
         self.menggong_mode_drop_rates = menggong_mode_drop_rates or {"purple": 0.45, "gold": 0.45, "red": 0.10}
+        self.chixiao_system = chixiao_system  # 赤枭系统
         self.last_usage = {}
         self.waiting_users = {}  # 记录正在等待的用户及其结束时间
         self.semaphore = asyncio.Semaphore(10)
@@ -41,7 +43,7 @@ class TouchiTools:
         
         # 初始化概率事件系统
         from .touchi_events import TouchiEvents
-        self.events = TouchiEvents(self.db_path, self.biaoqing_dir)
+        self.events = TouchiEvents(self.db_path, self.biaoqing_dir, chixiao_system=self.chixiao_system)
         
         self.safe_box_messages = [
             ("鼠鼠偷吃中...(预计{}min)", ["touchi1.gif", "touchi2.gif", "touchi3.gif", "touchi4.gif"], 120),
@@ -62,7 +64,6 @@ class TouchiTools:
         # 检视功能相关
         self.jianshi_dir = os.path.join(current_dir, "jianshi")
         os.makedirs(self.jianshi_dir, exist_ok=True)
-    
     async def _load_multiplier(self):
         """从数据库加载冷却倍率"""
         try:
@@ -494,11 +495,10 @@ class TouchiTools:
                     os.path.splitext(os.path.basename(item["item"]["path"]))[0]
                 )) for item in placed_items)
                 
-                # 检查概率事件
-                event_triggered, event_type, final_items, final_value, event_message, cooldown_multiplier, golden_item_path, event_emoji_path = await self.events.check_random_events(
-                event, user_id, placed_items, total_value
+            # 检查概率事件（传递猛攻状态）
+            event_triggered, event_type, final_items, final_value, event_message, cooldown_multiplier, golden_item_path, event_emoji_path = await self.events.check_random_events(
+                event, user_id, placed_items, total_value, is_menggong_active=menggong_mode
             )
-            
             # 如果触发事件，先发送事件消息
             if event_triggered and event_message:
                 # 发送事件消息（文字+表情）
@@ -811,13 +811,13 @@ class TouchiTools:
                         final_value += item_value
                 
                 # 根据事件结果决定是否添加物品到收藏
-                if not event_triggered or event_type == "genius_fine":
-                    # 追缴事件：只添加物品到收藏，不更新仓库价值（价值已在事件中计算）
-                    await self.add_items_to_collection_without_value_update(user_id, final_items)
-                elif not event_triggered or event_type != "genius_kick":
-                    # 正常情况或非踢死事件：添加物品到收藏并更新仓库价值
-                    await self.add_items_to_collection(user_id, final_items)
-                # 踢死事件：物品已在事件处理中被清空，不添加到收藏
+                    if not event_triggered or event_type == "genius_fine":
+                        # 追缴事件：只添加物品到收藏，不更新仓库价值（价值已在事件中计算）
+                        await self.add_items_to_collection_without_value_update(user_id, final_items)
+                    elif not event_triggered or event_type != "genius_kick":
+                        # 正常情况或非踢死事件：添加物品到收藏并更新仓库价值
+                        await self.add_items_to_collection(user_id, final_items)
+                    # 踢死事件：物品已在事件处理中被清空，不添加到收藏
                 
                 # 处理冷却时间倍率（菜b队友事件和系统补偿局事件）
                 if cooldown_multiplier and cooldown_multiplier != 1.0:
@@ -872,6 +872,14 @@ class TouchiTools:
                 
                 # 构建最终消息
                 final_message = base_message
+                if event_triggered:
+                    # 如果有赤枢对抗事件，消息已经在事件中发送了，不需要额外添加
+                    if event_type == "chixiao_battle":
+                        # 赤枢对抗：物品已添加到收藏（价值为0），不需要额外处理
+                        pass
+                    else:
+                        final_message += f"\n{event_message}"
+                
                 if zhou_triggered:
                     final_message += zhou_message
                 
