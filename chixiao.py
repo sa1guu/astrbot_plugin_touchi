@@ -223,7 +223,7 @@ class ChixiaoSystem:
         return total_chance
     
     async def check_and_trigger_battle(self, victim_id, stolen_value, is_menggong_active=False):
-        """检查并触发赤枢对抗事件
+        """检查并触发赤枭对抗事件
         
         Args:
             victim_id: 偷吃的玩家ID
@@ -231,20 +231,20 @@ class ChixiaoSystem:
             is_menggong_active: 受害者是否在猛攻状态
             
         Returns:
-            tuple: (是否触发, 对战结果, 赤枢ID, 偷走的金额, 赤枢击杀次数)
+            tuple: (是否触发, 对战结果, 赤枭ID, 偷走的金额, 赤枭击杀次数)
         """
         try:
             # 触发概率检查（添加调试日志）
             random_value = random.random()
-            print(f"[ChixiaoSystem] 赤枢对抗检查 - 受害者: {victim_id}, 偷吃价值: {stolen_value}, 触发概率: {self.trigger_chance}, 随机值: {random_value}")
+            print(f"[ChixiaoSystem] 赤枭对抗检查 - 受害者: {victim_id}, 偷吃价值: {stolen_value}, 触发概率: {self.trigger_chance}, 随机值: {random_value}")
             
             if random_value > self.trigger_chance:
-                print(f"[ChixiaoSystem] 未触发赤枢对抗（随机值 > 触发概率）")
+                print(f"[ChixiaoSystem] 未触发赤枭对抗（随机值 > 触发概率）")
                 return False, None, None, 0, 0
             
-            # 获取所有赤枢玩家
+            # 获取所有赤枭玩家
             chixiao_players = await self.get_all_chixiao_players()
-            print(f"[ChixiaoSystem] 找到 {len(chixiao_players)} 个赤枢玩家")
+            print(f"[ChixiaoSystem] 找到 {len(chixiao_players)} 个赤枭玩家")
             
             if not chixiao_players:
                 return False, None, None, 0, 0
@@ -267,10 +267,10 @@ class ChixiaoSystem:
             
             # 判定结果
             if random.random() < kill_chance:
-                # 赤枢获胜，夺取价值
+                # 赤枭获胜，夺取价值
                 stolen_amount = stolen_value
                 
-                # 更新赤枢装备价值
+                # 更新赤枭装备价值
                 async with aiosqlite.connect(self.db_path) as db:
                     await db.execute(
                         "UPDATE chixiao_status SET equipment_value = equipment_value + ?, total_kills = total_kills + 1 WHERE user_id = ?",
@@ -287,12 +287,12 @@ class ChixiaoSystem:
                     
                     await db.commit()
                 
-                # 返回赤枢获胜结果
+                # 返回赤枭获胜结果
                 return True, "chixiao_won", chixiao_id, stolen_amount, chixiao_kills + 1
             else:
-                # 玩家获胜，获得赤枢所有价值
+                # 玩家获胜，获得赤枭所有价值
                 async with aiosqlite.connect(self.db_path) as db:
-                    # 获取赤枢当前价值
+                    # 获取赤枭当前价值
                     cursor = await db.execute(
                         "SELECT equipment_value FROM chixiao_status WHERE user_id = ?",
                         (chixiao_id,)
@@ -300,7 +300,7 @@ class ChixiaoSystem:
                     result = await cursor.fetchone()
                     chixao_current_value = result[0] if result else 0
                     
-                    # 取消赤枢状态
+                    # 取消赤枭状态
                     await db.execute(
                         "UPDATE chixiao_status SET is_chixiao = 0, equipment_value = 0 WHERE user_id = ?",
                         (chixiao_id,)
