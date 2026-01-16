@@ -14,13 +14,13 @@ from .core.zhou import ZhouGame
 
 
 
-@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.8.2")
+@register("astrbot_plugin_touchi", "touchi", "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘", "2.8.3")
 class Main(Star):
     @classmethod
     def info(cls):
         return {
             "name": "astrbot_plugin_touchi",
-            "version": "2.8.2",
+            "version": "2.8.3",
             "description": "这是一个为 AstrBot 开发的三角洲鼠鼠偷吃群娱插件，增加了鼠鼠榜每日密码猛攻转盘等多种功能",
             "author": "sa1guu"
         }
